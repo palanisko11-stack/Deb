@@ -68,6 +68,7 @@ export default function App() {
   const apiRef = useRef<SceneApi | null>(null);
   const urlRef = useRef<string | null>(null);
   const toastId = useRef(0);
+  const busyRef = useRef(false);
 
   const toast = (msg: string) => {
     const id = ++toastId.current;
@@ -119,7 +120,8 @@ export default function App() {
   }, [meta.pkg, meta.version]);
 
   const handleBuild = async () => {
-    if (buildState === "building" || errors.pkg || errors.version) return;
+    if (busyRef.current || errors.pkg || errors.version) return;
+    busyRef.current = true;
     setBuildState("building");
     setLogs([]);
     if (urlRef.current) {
@@ -145,7 +147,30 @@ export default function App() {
       setLogs((prev) => [...prev, { text: `✗ chyba: ${err instanceof Error ? err.message : String(err)}`, kind: "plain" }]);
       setBuildState("error");
       toast("Sestavení balíčku selhalo");
+    } finally {
+      busyRef.current = false;
     }
+  };
+
+  // .deb se připraví rovnou — automatický build krátce po načtení stránky
+  const handleBuildRef = useRef(handleBuild);
+  handleBuildRef.current = handleBuild;
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      void handleBuildRef.current();
+    }, 750);
+    return () => window.clearTimeout(t);
+  }, []);
+
+  const downloadResult = () => {
+    if (!result) return;
+    const a = document.createElement("a");
+    a.href = result.url;
+    a.download = result.fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    toast(`Stahuji ${result.fileName} (${fmtKiB(result.size)})`);
   };
 
   const texLabel = status.texDone
@@ -175,6 +200,35 @@ export default function App() {
           <span className="chip hidden sm:inline-flex">
             three <span className="text-cy">r160</span>
           </span>
+          <button
+            className={`btn px-3.5 py-1.5 text-[12px] ${result ? "btn-primary" : "btn-ghost"}`}
+            disabled={!result}
+            onClick={downloadResult}
+            title={
+              result
+                ? `${result.fileName} · ${fmtKiB(result.size)} · sha256 ${result.sha256.slice(0, 16)}…`
+                : "Balíček se právě sestavuje…"
+            }
+          >
+            {result ? (
+              <>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <path d="M7 10l5 5 5-5" />
+                  <path d="M12 15V3" />
+                </svg>
+                Stáhnout .deb
+                <span className="font-mono text-[10.5px] font-normal opacity-80">{fmtKiB(result.size)}</span>
+              </>
+            ) : (
+              <>
+                <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+                  <path d="M21 12a9 9 0 1 1-6.2-8.56" />
+                </svg>
+                {buildState === "building" ? "Sestavuji…" : "Zabalit"}
+              </>
+            )}
+          </button>
           <button className="btn btn-ghost px-3 py-1.5 text-[12px] lg:hidden" onClick={() => setPanelOpen((o) => !o)}>
             {panelOpen ? "Skrýt" : "Balíček"}
           </button>
@@ -231,10 +285,39 @@ export default function App() {
           </div>
 
           {/* nápověda */}
-          <div className="pointer-events-none absolute bottom-3 left-3 z-10 hidden items-center gap-2 font-mono text-[11px] text-mut/80 md:flex">
+          <div
+            className={`pointer-events-none absolute left-3 z-10 hidden items-center gap-2 font-mono text-[11px] text-mut/80 md:flex ${
+              result ? "bottom-[88px]" : "bottom-3"
+            }`}
+          >
             táhni — otáčení <span className="text-dim">·</span> kolečko — zoom <span className="text-dim">·</span>
             <span className="kbd">mezerník</span> pauza rotace
           </div>
+
+          {/* dok: balíček připraven rovnou ke stažení */}
+          {result && (
+            <div className="pop absolute bottom-3 left-3 z-10 flex max-w-[calc(100%-24px)] items-center gap-3 rounded-xl border border-crimson/40 bg-panel/90 px-3.5 py-2.5 shadow-[0_18px_50px_-14px_rgba(225,75,90,0.5)] backdrop-blur-md">
+              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-crimson/45 bg-crimson/10 text-crimson2">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+                  <path d="M3.3 7 12 12l8.7-5" />
+                  <path d="M12 22V12" />
+                </svg>
+              </div>
+              <div className="min-w-0">
+                <p className="truncate font-mono text-[12px] font-semibold text-ink">{result.fileName}</p>
+                <p className="truncate font-mono text-[10px] text-mut">
+                  {fmtKiB(result.size)} · sha256 <span className="text-cy">{result.sha256.slice(0, 12)}</span>…
+                </p>
+              </div>
+              <button className="btn btn-primary ml-1 shrink-0 px-3 py-2 text-[12px]" onClick={downloadResult} title="Stáhnout .deb soubor">
+                Stáhnout
+              </button>
+              <button className="chip hidden sm:inline-flex" onClick={() => setPanelOpen(true)}>
+                podrobnosti
+              </button>
+            </div>
+          )}
 
           {/* podpis scény */}
           <div className="pointer-events-none absolute right-3 bottom-3 z-10 hidden text-right font-mono text-[10px] leading-relaxed text-dim lg:block">
