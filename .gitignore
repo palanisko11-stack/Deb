@@ -1,5 +1,49 @@
-node_modules/
-.next/
+```
+# Build artifacts
 dist/
 build/
+
+# Package files
+*.deb
+*.rpm
+*.tar
+*.gz
+*.zip
+
+# Node modules (if present)
+node_modules/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Logs
 *.log
+
+# Environment files
+.env
+.env.local
+*.env.*
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Coverage reports
+coverage/
+htmlcov/
+*.coverage
+
+# Distribution artifacts
+*.egg-info/
+*.whl
+```
